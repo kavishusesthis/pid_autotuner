@@ -56,10 +56,10 @@ with tab3:
 
 with tab4:
     st.markdown("""
-**Pipeline:** 1) sample random DC motors (R, L, J, b, Kt, Ke) → 2) for each, simulate ~600 PID combinations in closed loop (12 V limit, anti-windup)
-→ 3) score each with a cost (rise + settling time, 2×overshoot, 5×steady-state error) → 4) keep the best Kp/Ki/Kd → 5) train Ridge / Random Forest / Gradient Boosting / MLP on
-log-scaled targets → 6) test on motors never seen in training and compare with Ziegler-Nichols, Cohen-Coon (open-loop FOPDT fit) and the search optimizer.
+**Pipeline:**\n1) sample random DC motors (R, L, J, b, Kt, Ke) →\n2) for each, simulate ~600 PID combinations in closed loop (12 V limit, anti-windup)
+→\n3) score each with a cost (rise + settling time, 2×overshoot, 5×steady-state error) →\n4) keep the best Kp/Ki/Kd →\n5) train Ridge / Random Forest / Gradient Boosting / MLP on
+log-scaled targets →\n6) test on motors never seen in training and compare with Ziegler-Nichols, Cohen-Coon (open-loop FOPDT fit) and the search optimizer.
 
 **Reading the results:** parameter R² is modest because many different PID triples give near-identical responses (a flat optimum);
-the *control cost* is the fairer metric. The ML model gives near-optimizer quality at a fraction of the tuning time.
+the *control cost* is the fairer metric. The ML model gives near-optimizer quality at a fraction of the tuning time.\n
 **Limitations:** simulated linear motor, speed control only, trained on a limited parameter range.""")
