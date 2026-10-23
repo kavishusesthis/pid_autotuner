@@ -6,19 +6,20 @@ A PID controller regulates the speed of a motor using three gains: Kp, Ki and Kd
 
 In this project I built a machine learning model that predicts suitable PID gains directly from a motor's parameters. No ready-made dataset exists for this problem, so I created one by simulating many DC motors in Python, searching for the best PID gains for each motor, and recording them as training labels. I then trained several regression models on this dataset, tested the best one on motors it had never seen, and compared it with other tuning approaches.
 
-An interactive interface built with Streamlit allows any motor to be described with sliders and the resulting step responses to be compared immediately.
+An interactive interface built with Streamlit allows any motor to be described with sliders, the resulting step responses to be compared immediately, and the accuracy figures of the model to be viewed in one place.
 
 ## 2. Project Structure
 
 ```
 pid_autotuner/
-    core.py             Motor model, PID simulation, metrics, classical tuning rules, search tuner
-    run_pipeline.py     Dataset generation, model training, benchmark, robustness test, plots
-    app.py              Streamlit interface
-    requirements.txt    Python dependencies
-    data/dataset.csv    Simulated motors with their best-found PID gains
-    models/             Trained models
-    results/            Score tables and plots
+    core.py                  Motor model, PID simulation, metrics, classical tuning rules, search tuner
+    run_pipeline.py          Dataset generation, model training, benchmark, robustness test, plots
+    app.py                   Streamlit interface
+    accuracy_report.py       Prints the exact accuracy figures from the benchmark results
+    requirements.txt         Python dependencies
+    data/dataset.csv         Simulated motors with their best-found PID gains
+    models/                  Trained models
+    results/                 Score tables, plots and reported_accuracy.json
 ```
 
 ## 3. Method
@@ -88,7 +89,7 @@ I trained four regressors, each preceded by feature standardisation:
 - Gradient Boosting
 - Multi-layer perceptron (two hidden layers of 64 units)
 
-The model with the lowest validation error was selected for the benchmark.
+The model with the lowest validation error was selected for the benchmark. In my final run on my own computer this was Gradient Boosting. The selected model can differ between runs on different machines, because the library versions differ, so the file `results/model_scores.csv` always shows which model was chosen.
 
 ### 3.7 Comparison methods
 
@@ -105,46 +106,49 @@ The search optimiser should be read as a reference rather than an independent co
 
 ## 4. Results
 
-### 4.1 Prediction accuracy (log10 scale, held-out test motors)
+The full tables are written to the `results/` folder each time the pipeline runs (`model_scores.csv`, `comparison_summary.csv`, `comparison_per_motor.csv` and `robustness.csv`), together with the plots. The figures below are from my final run.
 
-| Model | Validation MAE | Test MAE | Test R2 |
-|---|---|---|---|
-| Ridge | 0.436 | 0.429 | 0.368 |
-| Random Forest | 0.434 | 0.429 | 0.381 |
-| Gradient Boosting | 0.436 | 0.428 | 0.381 |
-| MLP | 0.441 | 0.441 | 0.325 |
+### 4.1 Prediction accuracy
 
-Random Forest had the lowest validation error and was used in the benchmark. The R2 values are modest. This is expected, because many different PID combinations give almost identical responses, so the best gains for a motor are not uniquely defined. For this reason I consider the control performance below to be the more meaningful measure.
+The model scores are measured on held-out test motors, on the log10 scale of the gains. The selected model, Gradient Boosting, reached a test R2 of 0.359 (35.9%). This value is modest, and this is expected, because many different PID combinations give almost identical responses, so the best gains for a motor are not uniquely defined. For this reason I consider the control performance in section 4.2 to be the more meaningful measure, and R2 should always be reported as the R2 of the predicted gains, not as the accuracy of the controller.
 
-### 4.2 Control performance on unseen motors
+### 4.2 Control accuracy on unseen motors
 
-| Method | Mean cost | Median cost | Overshoot (%) | Settling (s) | Tuning time (ms) |
-|---|---|---|---|---|---|
-| Search optimiser | 0.0725 | 0.0528 | 0.0005 | 0.096 | 118.7 |
-| ML (Random Forest) | 0.0743 | 0.0548 | 0.003 | 0.101 | 21.4 |
-| Cohen-Coon | 0.0858 | 0.0657 | 0.65 | 0.097 | 3.0 |
-| Ziegler-Nichols | 0.1038 | 0.0869 | 1.50 | 0.100 | 2.9 |
+The predicted gains were used in the closed-loop simulation of 100 unseen motors, and the result was compared with the search optimiser. The figures are produced by `accuracy_report.py` and shown in the Accuracy tab of the interface.
 
-All four methods reached the target with zero steady-state error on every test motor.
+| Measure | Result |
+|---|---|
+| Control success rate (overshoot below 10%, steady-state error below 2%) | 100.0% |
+| Motors where the ML cost is within 10% of the optimiser cost | 79.0% |
+| Average performance relative to the optimiser (optimiser cost divided by ML cost) | 95.5% |
 
-### 4.3 Robustness (median cost on 40 test motors)
+Every test motor reached its target. The ML model therefore gives roughly 95% of the performance of the optimiser, while needing a single prediction instead of 600 simulations. Results for the two classical methods on the same motors, including overshoot, settling time and tuning time, are listed in `results/comparison_summary.csv`.
 
-| Method | Plant mismatch (J and R changed by up to 20%) | Noise 1% | Noise 3% |
-|---|---|---|---|
-| Search optimiser | 0.0599 | 1.0780 | 1.2219 |
-| ML (Random Forest) | 0.0652 | 1.0373 | 1.2230 |
-| Cohen-Coon | 0.0798 | 1.0995 | 1.2399 |
-| Ziegler-Nichols | 0.0934 | 1.1024 | 1.2473 |
+### 4.3 Robustness
 
-In the noise columns the cost is above 1 for every method. Sensor noise keeps the speed outside the 2% settling band, so the settling term reaches its maximum. These columns are therefore useful only for comparing methods with each other.
+I tested the gains of every method under 1% and 3% sensor noise and with the motor's J and R changed by up to 20% after tuning. The medians over 40 test motors are stored in `results/robustness.csv`. In the noise columns the cost is above 1 for every method. Sensor noise keeps the speed outside the 2% settling band, so the settling term reaches its maximum. These columns are therefore useful only for comparing methods with each other.
+
+### 4.4 Separately reported evaluation
+
+In a separate evaluation on 25 held-out synthetic motors, I counted a motor as valid when the gains passed the closed-loop checks. The valid rates were as follows:
+
+| Method | Valid rate on 25 held-out motors |
+|---|---|
+| Direct ML prediction | 92% (23/25) |
+| ML-assisted local search | 96% (24/25) |
+| Random search | 100% (25/25) |
+| Ziegler-Nichols | 76% (19/25) |
+| IMC PI | 64% (16/25) |
+
+In that evaluation, random search was the more reliable method, and ML-assisted local search had the lower score on 21 of the 24 motors where both succeeded. ML-assisted local search and IMC PI are not part of `run_pipeline.py`. These figures use a different test set and different pass criteria from section 4.2, so the two sets of numbers must not be compared directly. They are stored in `results/reported_accuracy.json` and displayed in the Accuracy tab of the interface.
 
 ## 5. Analysis
 
-- The ML model reaches a mean cost within about 3% of the search optimiser and clearly below both classical methods.
-- Its tuning time is about 6 times shorter than the optimiser's. Most of its 21 ms is the overhead of evaluating a 300-tree forest, and a smaller model would be faster.
-- The classical rules are the fastest (about 3 ms), but they produce more overshoot and a higher cost.
-- When the motor differs from the one used for tuning, the ML gains degrade less than the classical gains.
-- The speed advantage of the ML model over the optimiser is large only because the optimiser needs 600 simulations per motor. For a single motor the difference is a fraction of a second, so the benefit grows with the number of motors to be tuned.
+- The ML model reaches about 95% of the optimiser's performance on unseen motors, and all of them were controlled successfully.
+- Prediction takes a fraction of the time that the optimiser needs, because the optimiser runs 600 simulations per motor. The benefit grows with the number of motors to be tuned. For a single motor the difference is small.
+- The classical rules need no training and only one open-loop simulation, so their tuning time is the shortest, but they are not designed for a saturating drive, and the benchmark table shows how this affects their overshoot and cost.
+- The ML model does not beat random search on reliability in the separately reported evaluation, so I do not claim that it replaces a search. Its advantage is speed.
+- The lower R2 of the predicted gains does not prevent good control, because several gain combinations produce nearly the same response.
 
 ## 6. Limitations
 
@@ -152,6 +156,7 @@ In the noise columns the cost is above 1 for every method. Sensor noise keeps th
 - The model only covers speed control, and the training range is limited. Motors outside it (for example, mechanical time constants beyond 30 to 500 ms) are predicted poorly, and the interface shows a warning in that case.
 - The labels depend on my cost function and on a random search, so they are good solutions rather than proven optima.
 - Gain predictions have limited R2 because the optimum is flat.
+- The accuracy figures in sections 4.2 and 4.4 come from two different test sets and pass criteria.
 
 ## 7. Possible Extensions
 
@@ -167,18 +172,20 @@ Python 3.9 or newer is required. Python 3.11 or 3.12 is recommended.
 ```
 pip install -r requirements.txt
 python run_pipeline.py --motors 1000 --test 100 --jobs -1
+python accuracy_report.py
 streamlit run app.py
 ```
 
-The first command installs the dependencies. The second generates the dataset, trains the models, runs the benchmark and writes the results to `data/`, `models/` and `results/`. The third starts the interface at http://localhost:8501.
+The first command installs the dependencies. The second generates the dataset, trains the models, runs the benchmark and writes the results to `data/`, `models/` and `results/`. The third prints the exact accuracy figures from those results. The fourth starts the interface at http://localhost:8501.
 
-The trained model file depends on the installed scikit-learn version, so it must be regenerated with the second command on a new machine before starting the interface.
+The trained model file depends on the installed scikit-learn version, so it must be regenerated with the second command on a new machine before starting the interface. The file `results/reported_accuracy.json` must be present in the `results/` folder for the reported table to appear in the Accuracy tab.
 
-All random seeds are fixed, so the dataset and the accuracy figures are reproducible. Timing figures vary with the computer used.
+All random seeds are fixed, so the dataset is reproducible on the same library versions. Timing figures vary with the computer used.
 
 ## 9. Interface
 
 - **Tuner:** sliders for the six motor parameters and for sensor noise. The step response and a metrics table are shown for the ML model and the comparison methods.
-- **Benchmark:** the tables and plots from section 4.
+- **Accuracy:** the reported valid rates with a bar chart (section 4.4), and the live accuracy of the trained model computed from the benchmark results (section 4.2).
+- **Benchmark:** the tables and plots from the pipeline run.
 - **Dataset:** the generated data, with a download option.
 - **How it works:** a short description of the method.

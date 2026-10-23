@@ -1,0 +1,12 @@
+{
+  "source": "Working Demo and Viva Guide",
+  "test_set": "25 held-out synthetic motors",
+  "valid_rate": [
+    {"method": "Direct ML prediction", "passed": 23, "total": 25},
+    {"method": "ML-assisted local search", "passed": 24, "total": 25},
+    {"method": "Random search", "passed": 25, "total": 25},
+    {"method": "Ziegler-Nichols", "passed": 19, "total": 25},
+    {"method": "IMC PI", "passed": 16, "total": 25}
+  ],
+  "note": "ML local search had the lower score on 21 of the 24 motors where both ML local search and random search succeeded. Results are simulation-only."
+}

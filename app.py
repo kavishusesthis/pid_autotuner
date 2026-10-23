@@ -1,5 +1,5 @@
 """app.py - interactive UI.  Run:  streamlit run app.py"""
-import os, joblib, numpy as np, pandas as pd, streamlit as st
+import os, json, joblib, numpy as np, pandas as pd, streamlit as st
 import matplotlib.pyplot as plt
 import core
 
@@ -11,7 +11,7 @@ if not os.path.exists("models/models.joblib"):
     st.warning("No trained model found. Run `python run_pipeline.py` first (takes a few minutes).")
     st.stop()
 bundle = joblib.load("models/models.joblib"); model = bundle["models"][bundle["best"]]
-tab1, tab2, tab3, tab4 = st.tabs(["🎛️ Tuner", "📊 Benchmark", "🗂️ Dataset", "📖 How it works"])
+tab1, tabA, tab2, tab3, tab4 = st.tabs(["🎛️ Tuner", "✅ Accuracy", "📊 Benchmark", "🗂️ Dataset", "📖 How it works"])
 
 with tab1:
     side, main = st.columns([1, 3])
@@ -40,6 +40,30 @@ with tab1:
         ax.axhline(r, c="k", ls=":", label="target"); ax.set_xlabel("time (s)"); ax.set_ylabel("speed (rad/s)"); ax.legend(); ax.grid(alpha=.3)
         st.pyplot(fig)
         st.dataframe(pd.DataFrame(rows).set_index("Method").style.format("{:.4g}").highlight_min(subset=["Cost ↓"], color="#c8f7c5"), use_container_width=True)
+
+with tabA:
+    st.subheader("Reported accuracy (valid rate on held-out motors)")
+    if os.path.exists("results/reported_accuracy.json"):
+        rep = json.load(open("results/reported_accuracy.json"))
+        tbl = pd.DataFrame(rep["valid_rate"]); tbl["Valid rate %"] = (100 * tbl.passed / tbl.total).round(1)
+        tbl["Result"] = tbl.passed.astype(str) + "/" + tbl.total.astype(str)
+        cols = st.columns(len(tbl))
+        for c, (_, r) in zip(cols, tbl.iterrows()): c.metric(r["method"], f"{r['Valid rate %']:.0f}%", r["Result"])
+        st.bar_chart(tbl.set_index("method")["Valid rate %"])
+        st.caption(f"Test set: {rep['test_set']}. A motor counts as valid when the predicted or found gains pass the closed-loop checks. {rep['note']}")
+    else:
+        st.info("results/reported_accuracy.json not found.")
+    st.subheader("Live accuracy of this model (computed from results/comparison_per_motor.csv)")
+    if os.path.exists("results/comparison_per_motor.csv"):
+        cm = pd.read_csv("results/comparison_per_motor.csv"); pv = cm.pivot(index="motor", columns="method", values="cost")
+        ml, opt, n = pv["ML"], pv["Search optimizer"], len(pv); g = cm[cm.method == "ML"]
+        sc = pd.read_csv("results/model_scores.csv").set_index("model"); b = sc.val_MAE_log10.idxmin()
+        a, bb, c, d = st.columns(4)
+        a.metric("Control success rate", f"{100*((g.overshoot < 10) & (g.sse < 2)).mean():.1f}%")
+        bb.metric("Within 10% of optimizer", f"{100*(ml <= opt*1.1).mean():.1f}%")
+        c.metric("Avg performance vs optimizer", f"{100*(opt/ml).mean():.1f}%")
+        d.metric("Gains R2 (" + b + ")", f"{100*sc.loc[b, 'test_R2']:.1f}%")
+        st.caption(f"{n} unseen motors. Success means overshoot below 10% and steady-state error below 2%. These come from this app's own benchmark and use a different test set and pass criteria than the table above, so the two should not be compared directly.")
 
 with tab2:
     if os.path.exists("results/comparison_summary.csv"):
